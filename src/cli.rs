@@ -14,9 +14,9 @@ use std::{collections::BTreeMap, path::PathBuf, process::Command};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "split",
+    name = "swatch",
     version,
-    about = "A lightweight multi-pane command dashboard"
+    about = "Split Watch: a lightweight multi-pane command dashboard"
 )]
 pub struct Cli {
     #[arg(short = 'n')]

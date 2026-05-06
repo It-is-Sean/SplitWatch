@@ -1,6 +1,6 @@
-# split
+# Split Watch
 
-`split` is a lightweight terminal dashboard for periodically running shell commands in multiple panes and showing the latest output.
+`swatch` is a lightweight terminal dashboard for periodically running shell commands in multiple panes and showing the latest output.
 
 It is not a terminal multiplexer. It does not manage interactive shells, tabs, SSH sessions, or persistent shell processes. It runs configured commands on an interval and renders the latest results in a polished TUI.
 
@@ -14,7 +14,7 @@ It is not a terminal multiplexer. It does not manage interactive shells, tabs, S
 - Startup variables with `{{name}}` substitution
 - Built-in themes: `default`, `catppuccin`, `nord`, `dracula`, `monochrome`
 - Custom theme files
-- Save current view and resume it later with `split resume`
+- Save current view and resume it later with `swatch resume`
 
 ## Install
 
@@ -22,7 +22,7 @@ If Rust is already available through Homebrew:
 
 ```bash
 cargo build --release
-cp target/release/split /usr/local/bin/split
+cp target/release/swatch /usr/local/bin/swatch
 ```
 
 If you still need the toolchain:
@@ -36,49 +36,49 @@ brew install rust
 Start a temporary dashboard:
 
 ```bash
-split -n 4
-split -n 4 --theme catppuccin
-split -n 4 --accent "#89b4fa"
+swatch -n 4
+swatch -n 4 --theme catppuccin
+swatch -n 4 --accent "#89b4fa"
 ```
 
 Load a preset:
 
 ```bash
-split gpu
-split logs
-split -f ./examples/gpu-dev.toml
-split --file ./examples/gpu-dev.toml
+swatch gpu
+swatch logs
+swatch -f ./examples/gpu-dev.toml
+swatch --file ./examples/gpu-dev.toml
 ```
 
 List presets:
 
 ```bash
-split list
+swatch list
 ```
 
 Edit a preset:
 
 ```bash
-split edit gpu
+swatch edit gpu
 ```
 
 Resume the last saved view:
 
 ```bash
-split resume
+swatch resume
 ```
 
-Inside the TUI, press `z` to save the current view and exit. `split resume` loads that temporary view as a resume preset from:
+Inside the TUI, press `z` to save the current view and exit. `swatch resume` loads that temporary view as a resume preset from:
 
-- `$XDG_STATE_HOME/split/resume.toml`
-- fallback: `~/.local/state/split/resume.toml`
+- `$XDG_STATE_HOME/split-watch/resume.toml`
+- fallback: `~/.local/state/split-watch/resume.toml`
 
 ## Presets
 
 Default preset lookup uses:
 
-- `$XDG_CONFIG_HOME/split/presets/`
-- fallback: `~/.config/split/presets/`
+- `$XDG_CONFIG_HOME/split-watch/presets/`
+- fallback: `~/.config/split-watch/presets/`
 
 Example:
 
@@ -121,10 +121,10 @@ interval_ms = 1000
 Run with overrides:
 
 ```bash
-split train-debug --var log_file=/tmp/train.log --var pattern=CUDA
+swatch train-debug --var log_file=/tmp/train.log --var pattern=CUDA
 ```
 
-If required values are still empty, `split` opens a startup variable modal before running commands.
+If required values are still empty, `swatch` opens a startup variable modal before running commands.
 
 Variable naming convention:
 
@@ -147,7 +147,7 @@ Built-in themes:
 Load a custom theme file:
 
 ```bash
-split -n 4 --theme-file ./examples/custom-theme.toml
+swatch -n 4 --theme-file ./examples/custom-theme.toml
 ```
 
 ## Keys

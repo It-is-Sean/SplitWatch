@@ -86,14 +86,14 @@ impl Preset {
 pub fn preset_dir_with(xdg_config_home: Option<PathBuf>, home: PathBuf) -> PathBuf {
     xdg_config_home
         .unwrap_or_else(|| home.join(".config"))
-        .join("split")
+        .join("split-watch")
         .join("presets")
 }
 
 pub fn state_dir_with(xdg_state_home: Option<PathBuf>, home: PathBuf) -> PathBuf {
     xdg_state_home
         .unwrap_or_else(|| home.join(".local").join("state"))
-        .join("split")
+        .join("split-watch")
 }
 
 pub fn preset_dir() -> Result<PathBuf> {
@@ -203,11 +203,11 @@ mod tests {
         let xdg = tempdir().unwrap();
         assert_eq!(
             preset_dir_with(Some(xdg.path().to_path_buf()), home.path().to_path_buf()),
-            xdg.path().join("split").join("presets")
+            xdg.path().join("split-watch").join("presets")
         );
         assert_eq!(
             state_dir_with(None, home.path().to_path_buf()),
-            home.path().join(".local").join("state").join("split")
+            home.path().join(".local").join("state").join("split-watch")
         );
     }
 

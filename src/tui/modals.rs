@@ -320,7 +320,7 @@ pub(crate) fn draw_help(frame: &mut Frame, app: &App) {
         Line::from("Movement: h j k l / arrow keys"),
         Line::from("Pane: i edit command, t rename, r rerun, space pause, + / - interval"),
         Line::from("Global: R rerun all, p pause all, s save preset, z save view and exit"),
-        Line::from("Presets: split name, split -f file.toml, split resume"),
+        Line::from("Presets: swatch name, swatch -f file.toml, swatch resume"),
         Line::from("App: ? toggle help, q or Ctrl-C quit"),
         Line::from("Mouse: click focuses pane, wheel scrolls output"),
     ];
