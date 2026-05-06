@@ -1,0 +1,25 @@
+name = "gpu-dev"
+layout = "grid"
+default_interval_ms = 1000
+theme = "catppuccin"
+accent = "#89b4fa"
+
+[[panes]]
+title = "GPU"
+cmd = "nvidia-smi"
+interval_ms = 1000
+
+[[panes]]
+title = "Git"
+cmd = "git status --short"
+interval_ms = 2000
+
+[[panes]]
+title = "Disk"
+cmd = "df -h ."
+interval_ms = 3000
+
+[[panes]]
+title = "Python"
+cmd = "ps aux | grep python | grep -v grep | head -20"
+interval_ms = 1500

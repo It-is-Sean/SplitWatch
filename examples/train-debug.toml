@@ -1,0 +1,25 @@
+name = "train-debug"
+layout = "main-right-stack"
+default_interval_ms = 1000
+theme = "nord"
+
+[vars]
+run_name = ""
+log_file = ""
+gpu_id = "0"
+work_dir = "."
+
+[[panes]]
+title = "GPU {{gpu_id}}"
+cmd = "cd {{work_dir}} && CUDA_VISIBLE_DEVICES={{gpu_id}} nvidia-smi"
+interval_ms = 1000
+
+[[panes]]
+title = "Log {{run_name}}"
+cmd = "cd {{work_dir}} && tail -n 100 {{log_file}}"
+interval_ms = 1000
+
+[[panes]]
+title = "Process {{run_name}}"
+cmd = "cd {{work_dir}} && ps aux | grep {{run_name}} | grep -v grep"
+interval_ms = 1500

@@ -1,0 +1,18 @@
+name = "logs"
+layout = "grid"
+default_interval_ms = 1000
+theme = "catppuccin"
+
+[vars]
+log_file = ""
+pattern = "ERROR"
+
+[[panes]]
+title = "Tail {{log_file}}"
+cmd = "tail -n 120 {{log_file}}"
+interval_ms = 1000
+
+[[panes]]
+title = "Match {{pattern}}"
+cmd = "tail -n 200 {{log_file}} | grep {{pattern}}"
+interval_ms = 1000
