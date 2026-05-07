@@ -2,6 +2,7 @@ mod dashboard;
 mod helpers;
 mod modals;
 mod status;
+mod widgets;
 
 use crate::{
     app::{App, KeyAction, Mode, ToastLevel},
@@ -23,7 +24,7 @@ use ratatui::{
 use std::{io, sync::mpsc, time::Duration};
 
 use dashboard::draw_panes;
-use helpers::{input_cursor_x, pane_rects, vars_modal_layout};
+use helpers::pane_rects;
 use modals::{
     draw_command_modal, draw_delete_confirm_modal, draw_help, draw_input_modal, draw_save_modal,
     draw_vars_modal,
@@ -113,7 +114,7 @@ fn draw(frame: &mut Frame, app: &App) {
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(area);
 
-    draw_panes(frame, app, chunks[0]);
+    let inline_cursor = draw_panes(frame, app, chunks[0]);
     draw_status_bar(frame, app, chunks[1]);
 
     match app.mode {
@@ -127,7 +128,7 @@ fn draw(frame: &mut Frame, app: &App) {
                 frame,
                 app,
                 "Rename pane",
-                &app.title_input.value,
+                &app.title_input,
                 "Enter to save · Esc to cancel",
             );
         }
@@ -140,28 +141,8 @@ fn draw(frame: &mut Frame, app: &App) {
     }
 
     if app.mode == Mode::InlineCommand {
-        let rects = pane_rects(chunks[0], app.panes.len());
-        if let Some((_, rect)) = rects.iter().find(|(idx, _)| *idx == app.focused) {
-            let content_area = Rect::new(
-                rect.x + 2,
-                rect.y + 1,
-                rect.width.saturating_sub(4),
-                rect.height.saturating_sub(2),
-            );
-            let width = content_area.width.saturating_sub(3) as usize;
-            let cursor_x = input_cursor_x(&app.command_input, width);
-            let x = content_area.x + 2 + cursor_x as u16;
-            let y = content_area.y + content_area.height / 2;
+        if let Some((x, y)) = inline_cursor {
             frame.set_cursor_position((x, y));
-        }
-    } else if app.mode == Mode::VarsModal {
-        let (input_rects, _) =
-            vars_modal_layout(frame.area(), app.vars_fields.len(), app.vars_focus);
-        if let Some((_, input_rect)) = input_rects.iter().find(|(idx, _)| *idx == app.vars_focus) {
-            let field = &app.vars_fields[app.vars_focus];
-            let visible_width = input_rect.width.saturating_sub(4) as usize;
-            let cursor_x = input_cursor_x(&field.input, visible_width);
-            frame.set_cursor_position((input_rect.x + 1 + cursor_x as u16, input_rect.y + 1));
         }
     }
 }
