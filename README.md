@@ -1,6 +1,9 @@
+<img width="1510" height="844" alt="image" src="https://github.com/user-attachments/assets/f8ad8070-c701-451b-acc5-aa65355ba735" />
+
+
 # Split Watch
 
-`swatch` is a lightweight terminal dashboard for periodically running shell commands in multiple panes and showing the latest output.
+`swatch` is a lightweight terminal dashboard made with rust for periodically running shell commands in multiple panes and showing the latest output.
 
 It is not a terminal multiplexer. It does not manage interactive shells, tabs, SSH sessions, or persistent shell processes. It runs configured commands on an interval and renders the latest results in a polished TUI.
 
