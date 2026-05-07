@@ -17,6 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Linux GNU
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive: tar.gz
@@ -27,6 +28,18 @@ jobs:
             archive: tar.gz
             bin_ext: ""
 
+          # Linux MUSL, better for old servers such as Ubuntu 20.04
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            archive: tar.gz
+            bin_ext: ""
+
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            archive: tar.gz
+            bin_ext: ""
+
+          # macOS
           - os: macos-latest
             target: x86_64-apple-darwin
             archive: tar.gz
@@ -37,6 +50,7 @@ jobs:
             archive: tar.gz
             bin_ext: ""
 
+          # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             archive: zip
@@ -49,19 +63,40 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Install Linux ARM64 cross linker
+      - name: Install Linux GNU ARM64 linker
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Configure Linux ARM64 linker
+      - name: Configure Linux GNU ARM64 linker
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           mkdir -p .cargo
           cat >> .cargo/config.toml <<'EOF'
           [target.aarch64-unknown-linux-gnu]
           linker = "aarch64-linux-gnu-gcc"
+          EOF
+
+      - name: Install MUSL tools
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Install Linux MUSL ARM64 linker
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+
+      - name: Configure Linux MUSL ARM64 linker
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: |
+          mkdir -p .cargo
+          cat >> .cargo/config.toml <<'EOF'
+          [target.aarch64-unknown-linux-musl]
+          linker = "rust-lld"
           EOF
 
       - name: Build
@@ -80,6 +115,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/swatch" "dist/${NAME}/swatch"
           cp README.md "dist/${NAME}/" || true
           cp LICENSE "dist/${NAME}/" || true
+          cp LICENSE.md "dist/${NAME}/" || true
 
           cd dist
           tar -czf "${NAME}.tar.gz" "${NAME}"
@@ -93,8 +129,18 @@ jobs:
           New-Item -ItemType Directory -Force -Path "dist/$Name"
 
           Copy-Item "target/${{ matrix.target }}/release/swatch.exe" "dist/$Name/swatch.exe"
-          if (Test-Path "README.md") { Copy-Item "README.md" "dist/$Name/" }
-          if (Test-Path "LICENSE") { Copy-Item "LICENSE" "dist/$Name/" }
+
+          if (Test-Path "README.md") {
+            Copy-Item "README.md" "dist/$Name/"
+          }
+
+          if (Test-Path "LICENSE") {
+            Copy-Item "LICENSE" "dist/$Name/"
+          }
+
+          if (Test-Path "LICENSE.md") {
+            Copy-Item "LICENSE.md" "dist/$Name/"
+          }
 
           Compress-Archive -Path "dist/$Name" -DestinationPath "dist/$Name.zip"
 
