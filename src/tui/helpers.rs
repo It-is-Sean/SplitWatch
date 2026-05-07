@@ -1,6 +1,9 @@
 use crate::{app::TextInput, layout::grid_for_count};
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 
+pub(crate) const MIN_TERMINAL_WIDTH: u16 = 24;
+pub(crate) const MIN_TERMINAL_HEIGHT: u16 = 6;
+
 pub(crate) fn pane_rects(area: Rect, count: usize) -> Vec<(usize, Rect)> {
     if count == 3 {
         let cols = Layout::default()
@@ -44,6 +47,36 @@ pub(crate) fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let x = area.x + area.width.saturating_sub(width) / 2;
     let y = area.y + area.height.saturating_sub(height) / 2;
     Rect::new(x, y, width, height)
+}
+
+pub(crate) fn terminal_too_small(area: Rect) -> bool {
+    area.width < MIN_TERMINAL_WIDTH || area.height < MIN_TERMINAL_HEIGHT
+}
+
+pub(crate) fn cursor_if_visible(area: Rect, x: u16, y: u16) -> Option<(u16, u16)> {
+    if area.width == 0 || area.height == 0 {
+        return None;
+    }
+    let max_x = area.x + area.width.saturating_sub(1);
+    let max_y = area.y + area.height.saturating_sub(1);
+    if x >= area.x && x <= max_x && y >= area.y && y <= max_y {
+        Some((x, y))
+    } else {
+        None
+    }
+}
+
+pub(crate) fn command_modal_rect(area: Rect) -> Rect {
+    let width = area.width.saturating_sub(6).clamp(60, 90);
+    centered_rect(width, 20, area)
+}
+
+pub(crate) fn delete_modal_rect(area: Rect) -> Rect {
+    centered_rect(54, 7, area)
+}
+
+pub(crate) fn help_modal_rect(area: Rect) -> Rect {
+    centered_rect(76, 16, area)
 }
 
 pub(crate) fn truncate(value: &str, width: usize) -> String {

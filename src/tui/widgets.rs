@@ -120,7 +120,7 @@ impl StatefulWidget for InlineCommandInput<'_> {
 
             Paragraph::new("Type the command")
                 .style(Style::default().fg(self.theme.muted).bg(self.theme.panel))
-                .alignment(Alignment::Left)
+                .alignment(Alignment::Center)
                 .render(
                     Rect::new(area.x + 2, area.y, area.width.saturating_sub(2), 1),
                     buf,
@@ -265,6 +265,9 @@ impl Widget for PaneWidget<'_> {
 fn render_interval_controls(buf: &mut Buffer, app: &App, rect: Rect, interval_ms: u64) {
     let text = format!("[-] {}ms [+]", interval_ms);
     let width = text.chars().count() as u16;
+    if rect.width <= width.saturating_add(2) {
+        return;
+    }
     let x = rect.x + rect.width.saturating_sub(width.saturating_add(2));
     let line = Line::from(vec![
         Span::styled("[-]", Style::default().fg(app.theme.warning)),
@@ -336,10 +339,10 @@ fn mode_hints(app: &App) -> &'static [(&'static str, &'static str)] {
         }
         Mode::InlineCommand => &[("Left/Right", "move"), ("Enter", "save"), ("Esc", "cancel")],
         Mode::CommandModal => &[
-            ("Enter", "newline"),
+            ("Enter", "newline/save"),
             ("Tab", "switch"),
-            ("Ctrl-S", "save"),
-            ("Esc", "cancel"),
+            ("Esc", "blur/close"),
+            ("i", "focus"),
         ],
         Mode::DeleteConfirm => &[("Enter/Y", "confirm"), ("Esc/N", "cancel")],
         Mode::TitleModal => &[("type", "title"), ("Enter", "save"), ("Esc", "cancel")],

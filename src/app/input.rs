@@ -1,4 +1,9 @@
 use super::*;
+use crate::tui::{
+    actions::ModalActions,
+    helpers::{command_modal_rect, delete_modal_rect, help_modal_rect},
+    modals::{command_modal_actions, delete_modal_actions, help_modal_actions},
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use std::time::Instant;
 
@@ -37,6 +42,9 @@ impl App {
     }
 
     pub fn open_command_modal(&mut self) {
+        if !self.focused_pane().paused {
+            self.focused_pane_mut().paused = true;
+        }
         let command = self.focused_pane().cmd.clone();
         let title = if self.focused_pane().title.trim().is_empty() {
             format!("Pane {}", self.focused + 1)
@@ -234,43 +242,20 @@ impl App {
     }
 
     fn handle_command_modal_key(&mut self, key: KeyEvent) -> KeyAction {
-        match key.code {
-            KeyCode::Esc => self.mode = Mode::Normal,
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                let command = self.command_input.value.trim().to_string();
-                let title = self.title_input.value.trim().to_string();
-                let interval_text = self.interval_input.value.trim();
-                let interval_ms = if interval_text.is_empty() {
-                    self.default_interval_ms
-                } else {
-                    match interval_text.parse::<u64>() {
-                        Ok(value) if value >= 250 => value,
-                        Ok(_) => {
-                            self.toast = Some(Toast {
-                                message: "interval must be at least 250 ms".into(),
-                                level: ToastLevel::Error,
-                                created: Instant::now(),
-                            });
-                            return KeyAction::None;
-                        }
-                        Err(_) => {
-                            self.toast = Some(Toast {
-                                message: "interval must be a number in milliseconds".into(),
-                                level: ToastLevel::Error,
-                                created: Instant::now(),
-                            });
-                            return KeyAction::None;
-                        }
-                    }
-                };
+        if self.command_modal_focus == CommandModalFocus::None {
+            match key.code {
+                KeyCode::Esc => self.mode = Mode::Normal,
+                KeyCode::Char('i') => self.command_modal_focus = CommandModalFocus::Command,
+                KeyCode::Enter => self.apply_command_modal_save(),
+                _ => {}
+            }
+            return KeyAction::None;
+        }
 
-                let pane = self.focused_pane_mut();
-                pane.cmd = command;
-                pane.title = title;
-                pane.interval_ms = interval_ms;
-                pane.last_error = None;
-                pane.next_run = Instant::now();
-                self.mode = Mode::Normal;
+        match key.code {
+            KeyCode::Esc => self.command_modal_focus = CommandModalFocus::None,
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.apply_command_modal_save();
             }
             KeyCode::Enter => {
                 if self.command_modal_focus == CommandModalFocus::Command {
@@ -293,6 +278,7 @@ impl App {
             }
             KeyCode::Tab => {
                 self.command_modal_focus = match self.command_modal_focus {
+                    CommandModalFocus::None => CommandModalFocus::Command,
                     CommandModalFocus::Command => CommandModalFocus::Title,
                     CommandModalFocus::Title => CommandModalFocus::Interval,
                     CommandModalFocus::Interval => CommandModalFocus::Command,
@@ -300,6 +286,7 @@ impl App {
             }
             KeyCode::BackTab => {
                 self.command_modal_focus = match self.command_modal_focus {
+                    CommandModalFocus::None => CommandModalFocus::Interval,
                     CommandModalFocus::Command => CommandModalFocus::Interval,
                     CommandModalFocus::Title => CommandModalFocus::Command,
                     CommandModalFocus::Interval => CommandModalFocus::Title,
@@ -324,8 +311,48 @@ impl App {
         KeyAction::None
     }
 
+    fn apply_command_modal_save(&mut self) {
+        let command = self.command_input.value.trim().to_string();
+        let title = self.title_input.value.trim().to_string();
+        let interval_text = self.interval_input.value.trim();
+        let interval_ms = if interval_text.is_empty() {
+            self.default_interval_ms
+        } else {
+            match interval_text.parse::<u64>() {
+                Ok(value) if value >= 250 => value,
+                Ok(_) => {
+                    self.toast = Some(Toast {
+                        message: "interval must be at least 250 ms".into(),
+                        level: ToastLevel::Error,
+                        created: Instant::now(),
+                    });
+                    return;
+                }
+                Err(_) => {
+                    self.toast = Some(Toast {
+                        message: "interval must be a number in milliseconds".into(),
+                        level: ToastLevel::Error,
+                        created: Instant::now(),
+                    });
+                    return;
+                }
+            }
+        };
+
+        let pane = self.focused_pane_mut();
+        pane.cmd = command;
+        pane.title = title;
+        pane.interval_ms = interval_ms;
+        pane.paused = false;
+        pane.last_error = None;
+        pane.next_run = Instant::now();
+        pane.pending_run_once = true;
+        self.mode = Mode::Normal;
+    }
+
     fn active_command_input_mut(&mut self) -> &mut TextInput {
         match self.command_modal_focus {
+            CommandModalFocus::None => &mut self.command_input,
             CommandModalFocus::Command => &mut self.command_input,
             CommandModalFocus::Title => &mut self.title_input,
             CommandModalFocus::Interval => &mut self.interval_input,
@@ -382,13 +409,72 @@ impl App {
     pub fn handle_mouse(
         &mut self,
         event: MouseEvent,
+        frame_area: ratatui::layout::Rect,
         pane_rects: &[(usize, ratatui::layout::Rect)],
     ) {
-        if self.mode != Mode::Normal {
-            return;
-        }
         match event.kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                if self.mode == Mode::Help {
+                    if hit_modal_action(
+                        help_modal_actions(self),
+                        help_modal_rect(frame_area),
+                        event.column,
+                        event.row,
+                    ) == Some("quit")
+                    {
+                        self.mode = Mode::Normal;
+                    }
+                    return;
+                }
+                if self.mode == Mode::CommandModal {
+                    match hit_modal_action(
+                        command_modal_actions(self),
+                        command_modal_rect(frame_area),
+                        event.column,
+                        event.row,
+                    ) {
+                        Some("cancel") => {
+                            self.mode = Mode::Normal;
+                            return;
+                        }
+                        Some("confirm") => {
+                            self.apply_command_modal_save();
+                            return;
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+                if self.mode == Mode::DeleteConfirm {
+                    match hit_modal_action(
+                        delete_modal_actions(self),
+                        delete_modal_rect(frame_area),
+                        event.column,
+                        event.row,
+                    ) {
+                        Some("cancel") => {
+                            self.mode = Mode::Normal;
+                            return;
+                        }
+                        Some("delete") => {
+                            let pane = self.focused_pane_mut();
+                            pane.cmd.clear();
+                            pane.output.clear();
+                            pane.last_error = None;
+                            pane.last_exit_code = None;
+                            pane.running = false;
+                            pane.scroll = 0;
+                            pane.next_run = Instant::now();
+                            self.mode = Mode::Normal;
+                            return;
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+                if self.mode != Mode::Normal {
+                    return;
+                }
                 for (idx, rect) in pane_rects {
                     if contains(*rect, event.column, event.row) {
                         self.focused = *idx;
@@ -415,6 +501,15 @@ impl App {
 
 fn contains(rect: ratatui::layout::Rect, x: u16, y: u16) -> bool {
     x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
+}
+
+fn hit_modal_action<'a>(
+    actions: ModalActions<'a>,
+    modal_rect: ratatui::layout::Rect,
+    x: u16,
+    y: u16,
+) -> Option<&'a str> {
+    actions.hit_test(modal_rect, x, y)
 }
 
 fn interval_click_delta(

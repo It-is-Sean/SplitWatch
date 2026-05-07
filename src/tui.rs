@@ -1,7 +1,8 @@
+pub(crate) mod actions;
 mod ansi;
 mod dashboard;
-mod helpers;
-mod modals;
+pub(crate) mod helpers;
+pub(crate) mod modals;
 mod status;
 mod widgets;
 
@@ -20,12 +21,15 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
-    widgets::Block,
+    text::Line,
+    widgets::{Block, Paragraph},
 };
 use std::{io, sync::mpsc, time::Duration};
 
 use dashboard::draw_panes;
-use helpers::pane_rects;
+use helpers::{
+    MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH, cursor_if_visible, pane_rects, terminal_too_small,
+};
 use modals::{
     draw_command_modal, draw_delete_confirm_modal, draw_help, draw_input_modal, draw_save_modal,
     draw_vars_modal,
@@ -79,9 +83,9 @@ pub fn run_tui(mut app: App) -> Result<()> {
                 },
                 Event::Mouse(mouse) => {
                     let size = terminal.size()?;
-                    let rects =
-                        pane_rects(Rect::new(0, 0, size.width, size.height), app.panes.len());
-                    app.handle_mouse(mouse, &rects);
+                    let frame_area = Rect::new(0, 0, size.width, size.height);
+                    let rects = pane_rects(frame_area, app.panes.len());
+                    app.handle_mouse(mouse, frame_area, &rects);
                 }
                 Event::Resize(_, _) => {}
                 _ => {}
@@ -110,6 +114,23 @@ fn draw(frame: &mut Frame, app: &App) {
         Block::default().style(Style::default().bg(app.theme.background)),
         area,
     );
+    if terminal_too_small(area) {
+        let message = format!(
+            "Terminal too small. Resize to at least {}×{}.",
+            MIN_TERMINAL_WIDTH, MIN_TERMINAL_HEIGHT
+        );
+        frame.render_widget(
+            Paragraph::new(Line::from(message))
+                .style(
+                    Style::default()
+                        .fg(app.theme.muted)
+                        .bg(app.theme.background),
+                )
+                .alignment(ratatui::layout::Alignment::Center),
+            area,
+        );
+        return;
+    }
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
@@ -142,7 +163,7 @@ fn draw(frame: &mut Frame, app: &App) {
     }
 
     if app.mode == Mode::InlineCommand {
-        if let Some((x, y)) = inline_cursor {
+        if let Some((x, y)) = inline_cursor.and_then(|(x, y)| cursor_if_visible(area, x, y)) {
             frame.set_cursor_position((x, y));
         }
     }

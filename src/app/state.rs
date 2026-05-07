@@ -3,10 +3,10 @@ use crate::{
     theme::Theme,
 };
 use anyhow::Result;
+use portable_pty::Child as PtyChild;
 use std::{
     collections::VecDeque,
     path::PathBuf,
-    process::Child,
     sync::{Arc, Mutex},
     time::{Instant, SystemTime},
 };
@@ -195,7 +195,8 @@ pub struct PaneState {
     pub output: VecDeque<String>,
     pub scroll: u16,
     pub next_run: Instant,
-    pub child: Option<Arc<Mutex<Child>>>,
+    pub pending_run_once: bool,
+    pub child: Option<Arc<Mutex<Box<dyn PtyChild + Send + Sync>>>>,
 }
 
 impl PaneState {
@@ -214,6 +215,7 @@ impl PaneState {
             output: VecDeque::new(),
             scroll: 0,
             next_run: Instant::now(),
+            pending_run_once: false,
             child: None,
         }
     }
@@ -272,6 +274,7 @@ pub struct App {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandModalFocus {
+    None,
     Command,
     Title,
     Interval,

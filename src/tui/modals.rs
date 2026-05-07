@@ -5,12 +5,16 @@ use crate::{
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
-    style::Style,
+    style::{Color, Style},
     text::Line,
     widgets::{Block, Clear, Paragraph, StatefulWidget, Widget, Wrap},
 };
 
-use super::helpers::{centered_rect, vars_modal_layout, vars_scroll_text, visible_var_start};
+use super::actions::{ModalAction, ModalActions};
+use super::helpers::{
+    centered_rect, command_modal_rect, cursor_if_visible, delete_modal_rect, help_modal_rect,
+    vars_modal_layout, vars_scroll_text, visible_var_start,
+};
 use super::widgets::{InputCursorState, ModalFrame, SingleLineInput, TextAreaInput};
 
 pub(crate) fn draw_input_modal(
@@ -58,20 +62,23 @@ pub(crate) fn draw_input_modal(
         Paragraph::new(hint).style(Style::default().fg(app.theme.muted)),
         chunks[2],
     );
-    frame.set_cursor_position((input_state.x, input_state.y));
+    if let Some((x, y)) = cursor_if_visible(frame.area(), input_state.x, input_state.y) {
+        frame.set_cursor_position((x, y));
+    }
 }
 
 pub(crate) fn draw_command_modal(frame: &mut Frame, app: &App) {
-    let frame_area = frame.area();
-    let width = frame_area.width.saturating_sub(6).clamp(60, 90);
-    let area = centered_rect(width, 20, frame_area);
+    let area = command_modal_rect(frame.area());
     frame.render_widget(Clear, area);
     let title = format!("Set Command · Pane {}", app.focused + 1);
-    ModalFrame {
-        title: &title,
-        theme: &app.theme,
-    }
-    .render(area, frame.buffer_mut());
+    let border = app.theme.border_focused;
+    Block::bordered()
+        .border_set(ratatui::symbols::border::ROUNDED)
+        .border_style(Style::default().fg(border))
+        .title(format!(" {} ", title))
+        .style(Style::default().bg(app.theme.panel))
+        .render(area, frame.buffer_mut());
+    command_modal_actions(app).render(frame, area);
     let inner = Rect::new(
         area.x + 2,
         area.y + 2,
@@ -114,12 +121,15 @@ pub(crate) fn draw_command_modal(frame: &mut Frame, app: &App) {
     }
     .render(bottom_cols[1], frame.buffer_mut(), &mut interval_state);
 
-    let (x, y) = match app.command_modal_focus {
-        CommandModalFocus::Command => (command_state.x, command_state.y),
-        CommandModalFocus::Title => (title_state.x, title_state.y),
-        CommandModalFocus::Interval => (interval_state.x, interval_state.y),
+    let cursor = match app.command_modal_focus {
+        CommandModalFocus::None => None,
+        CommandModalFocus::Command => Some((command_state.x, command_state.y)),
+        CommandModalFocus::Title => Some((title_state.x, title_state.y)),
+        CommandModalFocus::Interval => Some((interval_state.x, interval_state.y)),
     };
-    frame.set_cursor_position((x, y));
+    if let Some((x, y)) = cursor.and_then(|(x, y)| cursor_if_visible(frame.area(), x, y)) {
+        frame.set_cursor_position((x, y));
+    }
 }
 
 pub(crate) fn draw_save_modal(frame: &mut Frame, app: &App) {
@@ -173,17 +183,21 @@ pub(crate) fn draw_save_modal(frame: &mut Frame, app: &App) {
             .wrap(Wrap { trim: false }),
         chunks[2],
     );
-    frame.set_cursor_position((save_state.x, save_state.y));
+    if let Some((x, y)) = cursor_if_visible(frame.area(), save_state.x, save_state.y) {
+        frame.set_cursor_position((x, y));
+    }
 }
 
 pub(crate) fn draw_delete_confirm_modal(frame: &mut Frame, app: &App) {
-    let area = centered_rect(54, 7, frame.area());
+    let area = delete_modal_rect(frame.area());
     frame.render_widget(Clear, area);
-    ModalFrame {
-        title: "Clear command",
-        theme: &app.theme,
-    }
-    .render(area, frame.buffer_mut());
+    Block::bordered()
+        .border_set(ratatui::symbols::border::ROUNDED)
+        .border_style(Style::default().fg(app.theme.error))
+        .title(" Clear command ")
+        .style(Style::default().bg(app.theme.panel))
+        .render(area, frame.buffer_mut());
+    delete_modal_actions(app).render(frame, area);
     let inner = Rect::new(
         area.x + 1,
         area.y + 1,
@@ -252,7 +266,9 @@ pub(crate) fn draw_vars_modal(frame: &mut Frame, app: &App) {
         }
         .render(*input_rect, frame.buffer_mut(), &mut input_state);
         if *field_idx == app.vars_focus {
-            frame.set_cursor_position((input_state.x, input_state.y));
+            if let Some((x, y)) = cursor_if_visible(frame.area(), input_state.x, input_state.y) {
+                frame.set_cursor_position((x, y));
+            }
         }
     }
 
@@ -272,13 +288,14 @@ pub(crate) fn draw_vars_modal(frame: &mut Frame, app: &App) {
 }
 
 pub(crate) fn draw_help(frame: &mut Frame, app: &App) {
-    let area = centered_rect(76, 16, frame.area());
+    let area = help_modal_rect(frame.area());
     frame.render_widget(Clear, area);
     ModalFrame {
         title: "Help",
         theme: &app.theme,
     }
     .render(area, frame.buffer_mut());
+    help_modal_actions(app).render(frame, area);
     let inner = Rect::new(
         area.x + 1,
         area.y + 1,
@@ -300,4 +317,53 @@ pub(crate) fn draw_help(frame: &mut Frame, app: &App) {
             .wrap(Wrap { trim: false }),
         inner.inner(Margin::new(1, 1)),
     );
+}
+
+pub(crate) fn command_modal_actions(app: &App) -> ModalActions<'_> {
+    let items = vec![
+        ModalAction {
+            id: "cancel",
+            label: "Cancel",
+            color: app.theme.muted,
+        },
+        ModalAction {
+            id: "confirm",
+            label: "Confirm",
+            color: app.theme.accent,
+        },
+    ];
+    modal_actions(app.theme.panel, app.theme.border, items)
+}
+
+pub(crate) fn delete_modal_actions(app: &App) -> ModalActions<'_> {
+    let items = vec![
+        ModalAction {
+            id: "cancel",
+            label: "Cancel",
+            color: app.theme.muted,
+        },
+        ModalAction {
+            id: "delete",
+            label: "Delete",
+            color: app.theme.error,
+        },
+    ];
+    modal_actions(app.theme.panel, app.theme.border, items)
+}
+
+pub(crate) fn help_modal_actions(app: &App) -> ModalActions<'_> {
+    let items = vec![ModalAction {
+        id: "quit",
+        label: "Quit",
+        color: app.theme.muted,
+    }];
+    modal_actions(app.theme.panel, app.theme.border, items)
+}
+
+fn modal_actions<'a>(
+    background: Color,
+    separator: Color,
+    items: Vec<ModalAction<'a>>,
+) -> ModalActions<'a> {
+    ModalActions::new(items, background, separator)
 }

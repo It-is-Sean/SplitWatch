@@ -1,7 +1,7 @@
 use super::*;
 use anyhow::Result;
+use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use std::{
-    process::{Command, Stdio},
     sync::{Arc, Mutex, mpsc::Sender},
     thread,
     time::{Duration, Instant, SystemTime},
@@ -21,11 +21,16 @@ impl App {
         }
         let now = Instant::now();
         for pane in &mut self.panes {
-            if self.global_paused || pane.paused || pane.running || pane.cmd.trim().is_empty() {
+            if pane.running || pane.cmd.trim().is_empty() {
                 continue;
             }
-            if now >= pane.next_run {
+            let should_run_once = pane.pending_run_once;
+            if (self.global_paused || pane.paused) && !should_run_once {
+                continue;
+            }
+            if should_run_once || now >= pane.next_run {
                 pane.running = true;
+                pane.pending_run_once = false;
                 pane.last_started = Some(SystemTime::now());
                 pane.last_error = None;
                 pane.next_run = now + Duration::from_millis(pane.interval_ms);
@@ -99,16 +104,44 @@ fn spawn_command(
     pane_id: usize,
     command: String,
     tx: Sender<CommandResult>,
-    slot: &mut Option<Arc<Mutex<std::process::Child>>>,
+    slot: &mut Option<Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>>,
 ) {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
-    let mut child = match Command::new(shell)
-        .arg("-lc")
-        .arg(command)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+    let pty_system = native_pty_system();
+    let pair = match pty_system.openpty(PtySize {
+        rows: 48,
+        cols: 160,
+        pixel_width: 0,
+        pixel_height: 0,
+    }) {
+        Ok(pair) => pair,
+        Err(error) => {
+            let _ = tx.send(CommandResult::Failed {
+                pane_id,
+                error: format!("failed to allocate pty: {error}"),
+            });
+            return;
+        }
+    };
+    let mut cmd = CommandBuilder::new(shell);
+    cmd.arg("-lc");
+    cmd.arg(command);
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    cmd.env("CLICOLOR_FORCE", "1");
+    cmd.env("FORCE_COLOR", "1");
+
+    let mut reader = match pair.master.try_clone_reader() {
+        Ok(reader) => reader,
+        Err(error) => {
+            let _ = tx.send(CommandResult::Failed {
+                pane_id,
+                error: format!("failed to read from pty: {error}"),
+            });
+            return;
+        }
+    };
+    let child = match pair.slave.spawn_command(cmd) {
         Ok(child) => child,
         Err(error) => {
             let _ = tx.send(CommandResult::Failed {
@@ -118,49 +151,26 @@ fn spawn_command(
             return;
         }
     };
+    drop(pair.slave);
 
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
     let child = Arc::new(Mutex::new(child));
     *slot = Some(child.clone());
     thread::spawn(move || {
-        let stdout_handle = stdout.map(|mut reader| {
-            thread::spawn(move || {
-                let mut buf = Vec::new();
-                let _ = std::io::Read::read_to_end(&mut reader, &mut buf);
-                buf
-            })
-        });
-        let stderr_handle = stderr.map(|mut reader| {
-            thread::spawn(move || {
-                let mut buf = Vec::new();
-                let _ = std::io::Read::read_to_end(&mut reader, &mut buf);
-                buf
-            })
+        let read_handle = thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut reader, &mut buf);
+            buf
         });
 
         let status = child.lock().map(|mut child| child.wait());
-        let stdout_bytes = stdout_handle
-            .map(|handle| handle.join().unwrap_or_default())
-            .unwrap_or_default();
-        let stderr_bytes = stderr_handle
-            .map(|handle| handle.join().unwrap_or_default())
-            .unwrap_or_default();
-
-        let mut output = String::from_utf8_lossy(&stdout_bytes).into_owned();
-        if !stderr_bytes.is_empty() {
-            if !output.is_empty() && !output.ends_with('\n') {
-                output.push('\n');
-            }
-            output.push_str(&String::from_utf8_lossy(&stderr_bytes));
-        }
+        let output = String::from_utf8_lossy(&read_handle.join().unwrap_or_default()).into_owned();
 
         match status {
             Ok(Ok(status)) => {
                 let _ = tx.send(CommandResult::Finished {
                     pane_id,
                     output,
-                    exit_code: status.code().unwrap_or(-1),
+                    exit_code: status.exit_code().min(i32::MAX as u32) as i32,
                 });
             }
             Ok(Err(error)) => {
