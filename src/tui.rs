@@ -1,3 +1,4 @@
+mod ansi;
 mod dashboard;
 mod helpers;
 mod modals;

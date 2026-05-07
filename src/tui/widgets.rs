@@ -10,6 +10,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, StatefulWidget, Widget, Wrap},
 };
 
+use super::ansi::ansi_text;
 use super::helpers::{
     input_cursor_x, text_area_cursor_position, truncate, visible_slice, visible_text_area,
 };
@@ -112,6 +113,23 @@ impl StatefulWidget for InlineCommandInput<'_> {
     type State = InputCursorState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        if self.input.value.is_empty() {
+            Paragraph::new("> ")
+                .style(Style::default().fg(self.theme.success).bg(self.theme.panel))
+                .render(Rect::new(area.x, area.y, 2, 1), buf);
+
+            Paragraph::new("Type the command")
+                .style(Style::default().fg(self.theme.muted).bg(self.theme.panel))
+                .alignment(Alignment::Left)
+                .render(
+                    Rect::new(area.x + 2, area.y, area.width.saturating_sub(2), 1),
+                    buf,
+                );
+            state.x = area.x + 2;
+            state.y = area.y;
+            return;
+        }
+
         let visible = visible_slice(
             &self.input.value,
             self.input.cursor_col(),
@@ -231,22 +249,12 @@ impl Widget for PaneWidget<'_> {
         render_interval_controls(buf, self.app, area, self.pane.interval_ms);
 
         let content_area = inner.inner(Margin::new(1, 0));
-        if self.pane.cmd.is_empty() {
-            Paragraph::new("Enter to set command")
-                .style(Style::default().fg(self.app.theme.muted))
-                .alignment(Alignment::Center)
-                .render(
-                    Rect::new(
-                        content_area.x,
-                        content_area.y + content_area.height / 2,
-                        content_area.width,
-                        1,
-                    ),
-                    buf,
-                );
-        } else {
-            Paragraph::new(self.pane.output_text())
-                .style(Style::default().fg(self.app.theme.foreground))
+        if !self.pane.cmd.is_empty() {
+            let base = Style::default()
+                .fg(self.app.theme.foreground)
+                .bg(self.app.theme.panel);
+            Paragraph::new(ansi_text(&self.pane.output_text(), base))
+                .style(base)
                 .wrap(Wrap { trim: false })
                 .scroll((self.pane.scroll, 0))
                 .render(content_area, buf);

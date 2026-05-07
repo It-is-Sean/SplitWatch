@@ -3,7 +3,7 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::Style,
-    widgets::{Paragraph, StatefulWidget, Widget},
+    widgets::{Block, Paragraph, StatefulWidget, Widget},
 };
 
 use super::{
@@ -42,6 +42,12 @@ fn draw_empty_pane(
 ) -> Option<(u16, u16)> {
     let is_editing = focused && app.mode == Mode::InlineCommand && pane.id == app.focused;
     let mid_y = area.y + area.height / 2;
+    let line_area = Rect::new(area.x, mid_y, area.width, 1);
+
+    frame.render_widget(
+        Block::default().style(Style::default().bg(app.theme.panel)),
+        line_area,
+    );
 
     if is_editing {
         let mut state = InputCursorState::default();
@@ -49,18 +55,14 @@ fn draw_empty_pane(
             input: &app.command_input,
             theme: &app.theme,
         }
-        .render(
-            Rect::new(area.x, mid_y, area.width, 1),
-            frame.buffer_mut(),
-            &mut state,
-        );
+        .render(line_area, frame.buffer_mut(), &mut state);
         Some((state.x, state.y))
     } else {
         frame.render_widget(
             Paragraph::new("Enter to set command")
                 .style(Style::default().fg(app.theme.muted))
                 .alignment(ratatui::layout::Alignment::Center),
-            Rect::new(area.x, mid_y, area.width, 1),
+            line_area,
         );
         None
     }
