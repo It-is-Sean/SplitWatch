@@ -74,10 +74,10 @@ jobs:
           set -euxo pipefail
 
           VERSION="${GITHUB_REF_NAME}"
-          NAME="split-${VERSION}-${{ matrix.target }}"
+          NAME="swatch-${VERSION}-${{ matrix.target }}"
           mkdir -p "dist/${NAME}"
 
-          cp "target/${{ matrix.target }}/release/split" "dist/${NAME}/split"
+          cp "target/${{ matrix.target }}/release/swatch" "dist/${NAME}/swatch"
           cp README.md "dist/${NAME}/" || true
           cp LICENSE "dist/${NAME}/" || true
 
@@ -89,10 +89,10 @@ jobs:
         shell: pwsh
         run: |
           $Version = "${env:GITHUB_REF_NAME}"
-          $Name = "split-$Version-${{ matrix.target }}"
+          $Name = "swatch-$Version-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path "dist/$Name"
 
-          Copy-Item "target/${{ matrix.target }}/release/split.exe" "dist/$Name/split.exe"
+          Copy-Item "target/${{ matrix.target }}/release/swatch.exe" "dist/$Name/swatch.exe"
           if (Test-Path "README.md") { Copy-Item "README.md" "dist/$Name/" }
           if (Test-Path "LICENSE") { Copy-Item "LICENSE" "dist/$Name/" }
 
