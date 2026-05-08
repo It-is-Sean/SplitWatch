@@ -3,7 +3,7 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::Style,
-    widgets::{Block, Paragraph, StatefulWidget, Widget},
+    widgets::{Block, Clear, Paragraph, StatefulWidget, Widget},
 };
 
 use super::{
@@ -24,16 +24,14 @@ pub(crate) fn draw_panes(frame: &mut Frame, app: &App, area: Rect) -> Option<(u1
             rect.width.saturating_sub(4),
             rect.height.saturating_sub(2),
         );
-        if pane.cmd.is_empty() {
-            if let Some(cursor) = draw_empty_pane(frame, app, pane, content_area, focused) {
-                inline_cursor = Some(cursor);
-            }
+        if let Some(cursor) = draw_inline_overlay(frame, app, pane, content_area, focused) {
+            inline_cursor = Some(cursor);
         }
     }
     inline_cursor
 }
 
-fn draw_empty_pane(
+fn draw_inline_overlay(
     frame: &mut Frame,
     app: &App,
     pane: &PaneState,
@@ -41,15 +39,18 @@ fn draw_empty_pane(
     focused: bool,
 ) -> Option<(u16, u16)> {
     let is_editing = focused && app.mode == Mode::InlineCommand && pane.id == app.focused;
+    if !is_editing && !pane.cmd.is_empty() {
+        return None;
+    }
     let mid_y = area.y + area.height / 2;
     let line_area = Rect::new(area.x, mid_y, area.width, 1);
 
-    frame.render_widget(
-        Block::default().style(Style::default().bg(app.theme.panel)),
-        line_area,
-    );
-
     if is_editing {
+        frame.render_widget(Clear, area);
+        frame.render_widget(
+            Block::default().style(Style::default().bg(app.theme.panel)),
+            area,
+        );
         let mut state = InputCursorState::default();
         InlineCommandInput {
             input: &app.command_input,
@@ -58,6 +59,10 @@ fn draw_empty_pane(
         .render(line_area, frame.buffer_mut(), &mut state);
         Some((state.x, state.y))
     } else {
+        frame.render_widget(
+            Block::default().style(Style::default().bg(app.theme.panel)),
+            line_area,
+        );
         frame.render_widget(
             Paragraph::new("Enter to set command")
                 .style(Style::default().fg(app.theme.muted))

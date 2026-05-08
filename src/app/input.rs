@@ -77,6 +77,17 @@ impl App {
         self.mode = Mode::SaveModal;
     }
 
+    pub fn open_inline_command(&mut self) {
+        let existing = !self.focused_pane().cmd.trim().is_empty();
+        let command = self.focused_pane().cmd.clone();
+        if existing {
+            self.focused_pane_mut().paused = true;
+        }
+        self.command_input = TextInput::new(command);
+        self.inline_resume_execution = existing;
+        self.mode = Mode::InlineCommand;
+    }
+
     pub fn toggle_pause_focused(&mut self) {
         let pane = self.focused_pane_mut();
         pane.paused = !pane.paused;
@@ -150,10 +161,7 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => self.focus_next(-1, 0),
             KeyCode::Down | KeyCode::Char('j') => self.focus_next(1, 0),
             KeyCode::Char('i') => self.open_command_modal(),
-            KeyCode::Enter if self.focused_pane().cmd.trim().is_empty() => {
-                self.command_input = TextInput::new(String::new());
-                self.mode = Mode::InlineCommand;
-            }
+            KeyCode::Enter => self.open_inline_command(),
             KeyCode::Char('t') => self.open_title_modal(),
             KeyCode::Char('r') => self.rerun_focused(),
             KeyCode::Char('R') => self.rerun_all(),
@@ -177,15 +185,34 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.command_input = TextInput::new(String::new());
+                if self.inline_resume_execution {
+                    let pane = self.focused_pane_mut();
+                    pane.paused = false;
+                    pane.next_run = Instant::now();
+                    pane.pending_run_once = true;
+                }
+                self.inline_resume_execution = false;
                 self.mode = Mode::Normal;
             }
             KeyCode::Enter => {
                 let value = self.command_input.value.trim().to_string();
+                let resume_execution = self.inline_resume_execution;
                 let pane = self.focused_pane_mut();
                 pane.cmd = value;
                 pane.last_error = None;
-                pane.next_run = Instant::now();
+                if resume_execution && !pane.cmd.trim().is_empty() {
+                    pane.paused = false;
+                    pane.next_run = Instant::now();
+                    pane.pending_run_once = true;
+                } else if pane.cmd.trim().is_empty() {
+                    pane.paused = false;
+                    pane.pending_run_once = false;
+                    pane.next_run = Instant::now();
+                } else {
+                    pane.next_run = Instant::now();
+                }
                 self.command_input = TextInput::new(String::new());
+                self.inline_resume_execution = false;
                 self.mode = Mode::Normal;
             }
             KeyCode::Backspace => self.command_input.backspace(),
