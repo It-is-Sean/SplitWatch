@@ -104,6 +104,13 @@ impl App {
         let pane = self.focused_pane_mut();
         let next = (pane.interval_ms as i64 + delta_ms).max(250) as u64;
         pane.interval_ms = next;
+        let required_ms = pane
+            .current_run_elapsed_ms()
+            .or(pane.last_long_running_ms)
+            .unwrap_or(0);
+        if next > required_ms {
+            pane.long_running_latched = false;
+        }
         pane.next_run = Instant::now() + std::time::Duration::from_millis(next);
     }
 
@@ -202,6 +209,7 @@ impl App {
                 pane.last_error = None;
                 pane.last_exit_code = None;
                 pane.running = false;
+                pane.run_started_at = None;
                 pane.scroll = 0;
                 pane.next_run = Instant::now();
                 self.mode = Mode::Normal;
@@ -340,9 +348,19 @@ impl App {
         };
 
         let pane = self.focused_pane_mut();
+        let interval_changed = pane.interval_ms != interval_ms;
         pane.cmd = command;
         pane.title = title;
         pane.interval_ms = interval_ms;
+        if interval_changed {
+            let required_ms = pane
+                .current_run_elapsed_ms()
+                .or(pane.last_long_running_ms)
+                .unwrap_or(0);
+            if interval_ms > required_ms {
+                pane.long_running_latched = false;
+            }
+        }
         pane.paused = false;
         pane.last_error = None;
         pane.next_run = Instant::now();
@@ -463,6 +481,7 @@ impl App {
                             pane.last_error = None;
                             pane.last_exit_code = None;
                             pane.running = false;
+                            pane.run_started_at = None;
                             pane.scroll = 0;
                             pane.next_run = Instant::now();
                             self.mode = Mode::Normal;

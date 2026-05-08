@@ -21,6 +21,10 @@ impl App {
         }
         let now = Instant::now();
         for pane in &mut self.panes {
+            if pane.running && pane.is_long_running() {
+                pane.long_running_latched = true;
+                pane.last_long_running_ms = pane.current_run_elapsed_ms();
+            }
             if pane.running || pane.cmd.trim().is_empty() {
                 continue;
             }
@@ -31,6 +35,7 @@ impl App {
             if should_run_once || now >= pane.next_run {
                 pane.running = true;
                 pane.pending_run_once = false;
+                pane.run_started_at = Some(now);
                 pane.last_started = Some(SystemTime::now());
                 pane.last_error = None;
                 pane.next_run = now + Duration::from_millis(pane.interval_ms);
@@ -54,7 +59,12 @@ impl App {
                 exit_code,
             } => {
                 if let Some(pane) = self.panes.get_mut(pane_id) {
+                    let finished_elapsed_ms = pane.current_run_elapsed_ms();
+                    if pane.long_running_latched {
+                        pane.last_long_running_ms = finished_elapsed_ms;
+                    }
                     pane.running = false;
+                    pane.run_started_at = None;
                     pane.child = None;
                     pane.last_finished = Some(SystemTime::now());
                     pane.last_exit_code = Some(exit_code);
@@ -63,7 +73,12 @@ impl App {
             }
             CommandResult::Failed { pane_id, error } => {
                 if let Some(pane) = self.panes.get_mut(pane_id) {
+                    let finished_elapsed_ms = pane.current_run_elapsed_ms();
+                    if pane.long_running_latched {
+                        pane.last_long_running_ms = finished_elapsed_ms;
+                    }
                     pane.running = false;
+                    pane.run_started_at = None;
                     pane.child = None;
                     pane.last_finished = Some(SystemTime::now());
                     pane.last_error = Some(error.clone());
@@ -95,6 +110,7 @@ impl App {
                 }
             }
             pane.running = false;
+            pane.run_started_at = None;
             pane.child = None;
         }
     }

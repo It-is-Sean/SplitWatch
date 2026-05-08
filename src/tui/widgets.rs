@@ -246,7 +246,7 @@ impl Widget for PaneWidget<'_> {
             ]));
         let inner = block.inner(area);
         block.render(area, buf);
-        render_interval_controls(buf, self.app, area, self.pane.interval_ms);
+        render_interval_controls(buf, self.app, area, self.pane);
 
         let content_area = inner.inner(Margin::new(1, 0));
         if !self.pane.cmd.is_empty() {
@@ -262,18 +262,23 @@ impl Widget for PaneWidget<'_> {
     }
 }
 
-fn render_interval_controls(buf: &mut Buffer, app: &App, rect: Rect, interval_ms: u64) {
-    let text = format!("[-] {}ms [+]", interval_ms);
+fn render_interval_controls(buf: &mut Buffer, app: &App, rect: Rect, pane: &PaneState) {
+    let text = format!("[-] {}ms [+]", pane.interval_ms);
     let width = text.chars().count() as u16;
     if rect.width <= width.saturating_add(2) {
         return;
     }
     let x = rect.x + rect.width.saturating_sub(width.saturating_add(2));
+    let interval_color = if pane.long_running_latched {
+        app.theme.error
+    } else {
+        app.theme.muted
+    };
     let line = Line::from(vec![
         Span::styled("[-]", Style::default().fg(app.theme.warning)),
         Span::styled(
-            format!(" {}ms ", interval_ms),
-            Style::default().fg(app.theme.muted),
+            format!(" {}ms ", pane.interval_ms),
+            Style::default().fg(interval_color),
         ),
         Span::styled("[+]", Style::default().fg(app.theme.success)),
     ]);
@@ -283,6 +288,8 @@ fn render_interval_controls(buf: &mut Buffer, app: &App, rect: Rect, interval_ms
 fn pane_status(app: &App, pane: &PaneState) -> Span<'static> {
     if app.global_paused || pane.paused {
         Span::styled(" ● ", Style::default().fg(app.theme.warning))
+    } else if pane.is_long_running() {
+        Span::styled(" ● ", Style::default().fg(app.theme.long_running))
     } else if pane.running {
         Span::styled(" ● ", Style::default().fg(app.theme.accent))
     } else if let Some(code) = pane.last_exit_code {

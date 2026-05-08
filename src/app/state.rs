@@ -188,6 +188,9 @@ pub struct PaneState {
     pub interval_ms: u64,
     pub paused: bool,
     pub running: bool,
+    pub run_started_at: Option<Instant>,
+    pub long_running_latched: bool,
+    pub last_long_running_ms: Option<u64>,
     pub last_started: Option<SystemTime>,
     pub last_finished: Option<SystemTime>,
     pub last_exit_code: Option<i32>,
@@ -208,6 +211,9 @@ impl PaneState {
             interval_ms: pane.interval_ms.unwrap_or(default_interval),
             paused: pane.paused,
             running: false,
+            run_started_at: None,
+            long_running_latched: false,
+            last_long_running_ms: None,
             last_started: None,
             last_finished: None,
             last_exit_code: None,
@@ -236,6 +242,18 @@ impl PaneState {
 
     pub fn output_text(&self) -> String {
         self.output.iter().cloned().collect::<Vec<_>>().join("\n")
+    }
+
+    pub fn is_long_running(&self) -> bool {
+        self.running
+            && self.run_started_at.is_some_and(|started| {
+                started.elapsed() >= std::time::Duration::from_millis(self.interval_ms)
+            })
+    }
+
+    pub fn current_run_elapsed_ms(&self) -> Option<u64> {
+        self.run_started_at
+            .map(|started| started.elapsed().as_millis().min(u64::MAX as u128) as u64)
     }
 }
 
