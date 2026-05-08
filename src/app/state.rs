@@ -3,7 +3,7 @@ use crate::{
     theme::Theme,
 };
 use anyhow::Result;
-use portable_pty::Child as PtyChild;
+use portable_pty::ChildKiller as PtyChildKiller;
 use std::{
     collections::VecDeque,
     path::PathBuf,
@@ -199,7 +199,7 @@ pub struct PaneState {
     pub scroll: u16,
     pub next_run: Instant,
     pub pending_run_once: bool,
-    pub child: Option<Arc<Mutex<Box<dyn PtyChild + Send + Sync>>>>,
+    pub child: Option<Arc<Mutex<Box<dyn PtyChildKiller + Send + Sync>>>>,
 }
 
 impl PaneState {

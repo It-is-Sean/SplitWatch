@@ -120,7 +120,7 @@ fn spawn_command(
     pane_id: usize,
     command: String,
     tx: Sender<CommandResult>,
-    slot: &mut Option<Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>>,
+    slot: &mut Option<Arc<Mutex<Box<dyn portable_pty::ChildKiller + Send + Sync>>>>,
 ) {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
     let pty_system = native_pty_system();
@@ -157,7 +157,7 @@ fn spawn_command(
             return;
         }
     };
-    let child = match pair.slave.spawn_command(cmd) {
+    let mut child = match pair.slave.spawn_command(cmd) {
         Ok(child) => child,
         Err(error) => {
             let _ = tx.send(CommandResult::Failed {
@@ -169,8 +169,7 @@ fn spawn_command(
     };
     drop(pair.slave);
 
-    let child = Arc::new(Mutex::new(child));
-    *slot = Some(child.clone());
+    *slot = Some(Arc::new(Mutex::new(child.clone_killer())));
     thread::spawn(move || {
         let read_handle = thread::spawn(move || {
             let mut buf = Vec::new();
@@ -178,27 +177,21 @@ fn spawn_command(
             buf
         });
 
-        let status = child.lock().map(|mut child| child.wait());
+        let status = child.wait();
         let output = String::from_utf8_lossy(&read_handle.join().unwrap_or_default()).into_owned();
 
         match status {
-            Ok(Ok(status)) => {
+            Ok(status) => {
                 let _ = tx.send(CommandResult::Finished {
                     pane_id,
                     output,
                     exit_code: status.exit_code().min(i32::MAX as u32) as i32,
                 });
             }
-            Ok(Err(error)) => {
+            Err(error) => {
                 let _ = tx.send(CommandResult::Failed {
                     pane_id,
                     error: format!("wait failed: {error}"),
-                });
-            }
-            Err(_) => {
-                let _ = tx.send(CommandResult::Failed {
-                    pane_id,
-                    error: "failed to lock child".into(),
                 });
             }
         }
