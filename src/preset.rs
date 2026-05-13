@@ -1,4 +1,4 @@
-use crate::vars;
+use crate::{layout::PresetLayout, vars};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -19,7 +19,7 @@ pub struct PanePreset {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Preset {
     pub name: Option<String>,
-    pub layout: Option<String>,
+    pub layout: Option<PresetLayout>,
     pub default_interval_ms: Option<u64>,
     pub theme: Option<String>,
     pub accent: Option<String>,
@@ -43,7 +43,7 @@ impl Preset {
             .collect();
         Self {
             name: None,
-            layout: Some("grid".into()),
+            layout: Some(PresetLayout::Named("grid".into())),
             default_interval_ms: Some(1000),
             theme,
             accent,
@@ -161,7 +161,7 @@ pub fn ensure_editable_preset(name: &str) -> Result<PathBuf> {
             &path,
             &Preset {
                 name: Some(name.to_string()),
-                layout: Some("grid".into()),
+                layout: Some(PresetLayout::Named("grid".into())),
                 default_interval_ms: Some(1000),
                 theme: Some("default".into()),
                 accent: None,
@@ -192,8 +192,10 @@ fn home_dir() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        PanePreset, Preset, load_from_path, preset_dir_with, save_to_path, state_dir_with,
+        PanePreset, Preset, PresetLayout, load_from_path, preset_dir_with, save_to_path,
+        state_dir_with,
     };
+    use crate::layout::{LayoutNode, SplitAxis};
     use std::collections::BTreeMap;
     use tempfile::tempdir;
 
@@ -217,18 +219,31 @@ mod tests {
         let path = dir.path().join("preset.toml");
         let preset = Preset {
             name: Some("gpu-dev".into()),
-            layout: Some("grid".into()),
+            layout: Some(PresetLayout::Tree(LayoutNode::Split {
+                axis: SplitAxis::Vertical,
+                ratio_percent: 65,
+                first: Box::new(LayoutNode::Leaf { pane: 0 }),
+                second: Box::new(LayoutNode::Leaf { pane: 1 }),
+            })),
             default_interval_ms: Some(1000),
             theme: Some("catppuccin".into()),
             accent: Some("#89b4fa".into()),
             focused: Some(1),
             vars: BTreeMap::from([("gpu".into(), "0".into())]),
-            panes: vec![PanePreset {
-                title: "GPU".into(),
-                cmd: "nvidia-smi".into(),
-                interval_ms: Some(1000),
-                paused: false,
-            }],
+            panes: vec![
+                PanePreset {
+                    title: "GPU".into(),
+                    cmd: "nvidia-smi".into(),
+                    interval_ms: Some(1000),
+                    paused: false,
+                },
+                PanePreset {
+                    title: "Logs".into(),
+                    cmd: "tail -n 20 train.log".into(),
+                    interval_ms: Some(1500),
+                    paused: true,
+                },
+            ],
         };
         save_to_path(&path, &preset).unwrap();
         let loaded = load_from_path(&path).unwrap();

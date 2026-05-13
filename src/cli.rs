@@ -76,7 +76,7 @@ fn load_requested_preset(cli: &Cli) -> Result<(Preset, Option<PathBuf>)> {
         let path = resolve_preset_path(name)?;
         return Ok((load_from_path(&path)?, Some(path)));
     }
-    let count = cli.panes.unwrap_or(4);
+    let count = cli.panes.unwrap_or(3);
     Ok((
         Preset::empty(count, cli.theme.clone(), cli.accent.clone()),
         None,

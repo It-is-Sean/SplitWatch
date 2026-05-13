@@ -1,4 +1,8 @@
 use super::*;
+use crate::layout::{
+    SplitAxis, adjust_split_ratio_for_pane, can_split_rect, layout_meets_min_pane_size,
+    remove_pane, shift_pane_indices, split_pane,
+};
 use crate::tui::{
     actions::ModalActions,
     helpers::{command_modal_rect, delete_modal_rect, help_modal_rect},
@@ -14,31 +18,18 @@ enum ModalKind {
 }
 
 impl App {
-    pub fn focus_next(&mut self, delta_row: isize, delta_col: isize) {
-        if self.panes.is_empty() {
+    pub fn focus_next(
+        &mut self,
+        delta_row: isize,
+        delta_col: isize,
+        pane_rects: &[(usize, ratatui::layout::Rect)],
+    ) {
+        if self.panes.is_empty() || pane_rects.is_empty() {
             return;
         }
-        if self.panes.len() == 3 {
-            self.focused = match (self.focused, delta_row, delta_col) {
-                (0, _, dc) if dc > 0 => 1,
-                (0, dr, _) if dr > 0 => 2,
-                (1, _, dc) if dc < 0 => 0,
-                (1, dr, _) if dr > 0 => 2,
-                (2, _, dc) if dc < 0 => 0,
-                (2, dr, _) if dr < 0 => 1,
-                _ => self.focused,
-            };
-            return;
+        if let Some(idx) = next_focus_index(self.focused, delta_row, delta_col, pane_rects) {
+            self.focused = idx;
         }
-        let grid = crate::layout::grid_for_count(self.panes.len());
-        let row = self.focused / grid.cols;
-        let col = self.focused % grid.cols;
-        let next_row =
-            (row as isize + delta_row).clamp(0, grid.rows.saturating_sub(1) as isize) as usize;
-        let next_col =
-            (col as isize + delta_col).clamp(0, grid.cols.saturating_sub(1) as isize) as usize;
-        let next = (next_row * grid.cols + next_col).min(self.panes.len().saturating_sub(1));
-        self.focused = next;
     }
 
     pub fn open_command_modal(&mut self) {
@@ -88,6 +79,65 @@ impl App {
         self.mode = Mode::InlineCommand;
     }
 
+    pub fn split_focused(
+        &mut self,
+        axis: SplitAxis,
+        pane_rects: &[(usize, ratatui::layout::Rect)],
+    ) {
+        let Some((_, current_rect)) = pane_rects.iter().find(|(idx, _)| *idx == self.focused)
+        else {
+            return;
+        };
+        if !can_split_rect(*current_rect, axis) {
+            self.toast = Some(Toast {
+                message: "pane reached minimum size".into(),
+                level: ToastLevel::Warning,
+                created: Instant::now(),
+            });
+            return;
+        }
+        let focused = self.focused;
+        let insert_at = focused + 1;
+        shift_pane_indices(&mut self.layout_tree, insert_at, 1);
+        let new_id = insert_at;
+        let title = format!("Pane {}", self.panes.len() + 1);
+        self.panes.insert(
+            insert_at,
+            PaneState::from_preset(
+                new_id,
+                &crate::preset::PanePreset {
+                    title,
+                    cmd: String::new(),
+                    interval_ms: Some(self.default_interval_ms),
+                    paused: false,
+                },
+                self.default_interval_ms,
+            ),
+        );
+        let _ = split_pane(&mut self.layout_tree, focused, axis, insert_at);
+        for (idx, pane) in self.panes.iter_mut().enumerate() {
+            pane.id = idx;
+        }
+        self.focused = insert_at;
+    }
+
+    pub fn delete_focused_pane(&mut self) {
+        if self.panes.len() <= 1 {
+            return;
+        }
+        let target = self.focused;
+        let Some(layout) = remove_pane(self.layout_tree.clone(), target) else {
+            return;
+        };
+        self.layout_tree = layout;
+        self.panes.remove(target);
+        shift_pane_indices(&mut self.layout_tree, target + 1, -1);
+        for (idx, pane) in self.panes.iter_mut().enumerate() {
+            pane.id = idx;
+        }
+        self.focused = self.focused.min(self.panes.len().saturating_sub(1));
+    }
+
     pub fn toggle_pause_focused(&mut self) {
         let pane = self.focused_pane_mut();
         pane.paused = !pane.paused;
@@ -125,7 +175,33 @@ impl App {
         pane.next_run = Instant::now() + std::time::Duration::from_millis(next);
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent) -> KeyAction {
+    pub fn resize_focused_split(
+        &mut self,
+        area: ratatui::layout::Rect,
+        axis: SplitAxis,
+        delta: i16,
+    ) {
+        let mut candidate = self.layout_tree.clone();
+        if !adjust_split_ratio_for_pane(&mut candidate, self.focused, axis, delta) {
+            return;
+        }
+        if !layout_meets_min_pane_size(area, &candidate) {
+            self.toast = Some(Toast {
+                message: "pane reached minimum size".into(),
+                level: ToastLevel::Warning,
+                created: Instant::now(),
+            });
+            return;
+        }
+        self.layout_tree = candidate;
+    }
+
+    pub fn handle_key(
+        &mut self,
+        key: KeyEvent,
+        area: ratatui::layout::Rect,
+        pane_rects: &[(usize, ratatui::layout::Rect)],
+    ) -> KeyAction {
         if matches!(self.mode, Mode::Help) {
             if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
                 self.mode = Mode::Normal;
@@ -156,12 +232,14 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Left | KeyCode::Char('h') => self.focus_next(0, -1),
-            KeyCode::Right | KeyCode::Char('l') => self.focus_next(0, 1),
-            KeyCode::Up | KeyCode::Char('k') => self.focus_next(-1, 0),
-            KeyCode::Down | KeyCode::Char('j') => self.focus_next(1, 0),
+            KeyCode::Left | KeyCode::Char('h') => self.focus_next(0, -1, pane_rects),
+            KeyCode::Right | KeyCode::Char('l') => self.focus_next(0, 1, pane_rects),
+            KeyCode::Up | KeyCode::Char('k') => self.focus_next(-1, 0, pane_rects),
+            KeyCode::Down | KeyCode::Char('j') => self.focus_next(1, 0, pane_rects),
             KeyCode::Char('i') => self.open_command_modal(),
             KeyCode::Enter => self.open_inline_command(),
+            KeyCode::Char('v') => self.split_focused(SplitAxis::Vertical, pane_rects),
+            KeyCode::Char('b') => self.split_focused(SplitAxis::Horizontal, pane_rects),
             KeyCode::Char('t') => self.open_title_modal(),
             KeyCode::Char('r') => self.rerun_focused(),
             KeyCode::Char('R') => self.rerun_all(),
@@ -169,6 +247,14 @@ impl App {
             KeyCode::Char('p') => self.toggle_pause_all(),
             KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_interval_focused(50),
             KeyCode::Char('-') | KeyCode::Char('_') => self.adjust_interval_focused(-50),
+            KeyCode::Char('H') => self.resize_focused_split(area, SplitAxis::Vertical, -5),
+            KeyCode::Char('L') => self.resize_focused_split(area, SplitAxis::Vertical, 5),
+            KeyCode::Char('K') => self.resize_focused_split(area, SplitAxis::Horizontal, -5),
+            KeyCode::Char('J') => self.resize_focused_split(area, SplitAxis::Horizontal, 5),
+            KeyCode::Char('x') if self.focused_pane().cmd.trim().is_empty() => {
+                self.delete_focused_pane()
+            }
+            KeyCode::Char('x') => self.mode = Mode::DeleteConfirm,
             KeyCode::Backspace if !self.focused_pane().cmd.trim().is_empty() => {
                 self.mode = Mode::DeleteConfirm;
             }
@@ -230,15 +316,7 @@ impl App {
         match key.code {
             KeyCode::Esc | KeyCode::Char('n') => self.mode = Mode::Normal,
             KeyCode::Enter | KeyCode::Char('y') => {
-                let pane = self.focused_pane_mut();
-                pane.cmd.clear();
-                pane.output.clear();
-                pane.last_error = None;
-                pane.last_exit_code = None;
-                pane.running = false;
-                pane.run_started_at = None;
-                pane.scroll = 0;
-                pane.next_run = Instant::now();
+                self.delete_focused_pane();
                 self.mode = Mode::Normal;
             }
             _ => {}
@@ -502,15 +580,7 @@ impl App {
                             return;
                         }
                         Some("delete") => {
-                            let pane = self.focused_pane_mut();
-                            pane.cmd.clear();
-                            pane.output.clear();
-                            pane.last_error = None;
-                            pane.last_exit_code = None;
-                            pane.running = false;
-                            pane.run_started_at = None;
-                            pane.scroll = 0;
-                            pane.next_run = Instant::now();
+                            self.delete_focused_pane();
                             self.mode = Mode::Normal;
                             return;
                         }
@@ -542,6 +612,158 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+fn next_focus_index(
+    focused: usize,
+    delta_row: isize,
+    delta_col: isize,
+    pane_rects: &[(usize, ratatui::layout::Rect)],
+) -> Option<usize> {
+    let (_, current) = pane_rects.iter().find(|(idx, _)| *idx == focused)?;
+    let mut best: Option<(usize, i32, i32, i32, i32)> = None;
+
+    for (idx, rect) in pane_rects {
+        if *idx == focused {
+            continue;
+        }
+
+        let (in_direction, gap, overlap, order_primary, order_secondary) = if delta_col < 0 {
+            let rect_right = rect.x as i32 + rect.width as i32;
+            let current_left = current.x as i32;
+            (
+                rect_right <= current_left,
+                current_left - rect_right,
+                overlap_1d(
+                    current.y as i32,
+                    current.y as i32 + current.height as i32,
+                    rect.y as i32,
+                    rect.y as i32 + rect.height as i32,
+                ),
+                rect.y as i32,
+                rect.x as i32,
+            )
+        } else if delta_col > 0 {
+            let current_right = current.x as i32 + current.width as i32;
+            let rect_left = rect.x as i32;
+            (
+                rect_left >= current_right,
+                rect_left - current_right,
+                overlap_1d(
+                    current.y as i32,
+                    current.y as i32 + current.height as i32,
+                    rect.y as i32,
+                    rect.y as i32 + rect.height as i32,
+                ),
+                rect.y as i32,
+                rect.x as i32,
+            )
+        } else if delta_row < 0 {
+            let rect_bottom = rect.y as i32 + rect.height as i32;
+            let current_top = current.y as i32;
+            (
+                rect_bottom <= current_top,
+                current_top - rect_bottom,
+                overlap_1d(
+                    current.x as i32,
+                    current.x as i32 + current.width as i32,
+                    rect.x as i32,
+                    rect.x as i32 + rect.width as i32,
+                ),
+                rect.x as i32,
+                rect.y as i32,
+            )
+        } else if delta_row > 0 {
+            let current_bottom = current.y as i32 + current.height as i32;
+            let rect_top = rect.y as i32;
+            (
+                rect_top >= current_bottom,
+                rect_top - current_bottom,
+                overlap_1d(
+                    current.x as i32,
+                    current.x as i32 + current.width as i32,
+                    rect.x as i32,
+                    rect.x as i32 + rect.width as i32,
+                ),
+                rect.x as i32,
+                rect.y as i32,
+            )
+        } else {
+            continue;
+        };
+
+        if !in_direction {
+            continue;
+        }
+
+        match best {
+            None => best = Some((*idx, gap, -overlap, order_primary, order_secondary)),
+            Some((_, best_gap, best_neg_overlap, best_primary, best_secondary))
+                if gap < best_gap
+                    || (gap == best_gap && -overlap < best_neg_overlap)
+                    || (gap == best_gap
+                        && -overlap == best_neg_overlap
+                        && (order_primary < best_primary
+                            || (order_primary == best_primary
+                                && order_secondary < best_secondary))) =>
+            {
+                best = Some((*idx, gap, -overlap, order_primary, order_secondary));
+            }
+            _ => {}
+        }
+    }
+
+    best.map(|(idx, _, _, _, _)| idx)
+}
+
+fn overlap_1d(a_start: i32, a_end: i32, b_start: i32, b_end: i32) -> i32 {
+    (a_end.min(b_end) - a_start.max(b_start)).max(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_focus_index;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn prefers_overlapping_pane_when_moving_right() {
+        let rects = vec![
+            (0, Rect::new(0, 0, 40, 40)),
+            (1, Rect::new(40, 0, 20, 20)),
+            (2, Rect::new(40, 20, 20, 20)),
+            (3, Rect::new(60, 15, 20, 10)),
+        ];
+        assert_eq!(next_focus_index(0, 0, 1, &rects), Some(1));
+        assert_eq!(next_focus_index(1, 1, 0, &rects), Some(2));
+        assert_eq!(next_focus_index(2, -1, 0, &rects), Some(1));
+    }
+
+    #[test]
+    fn prefers_closest_gap_before_diagonal_candidates() {
+        let rects = vec![
+            (0, Rect::new(20, 20, 20, 10)),
+            (1, Rect::new(0, 20, 20, 10)),
+            (2, Rect::new(0, 0, 20, 10)),
+        ];
+        assert_eq!(next_focus_index(0, 0, -1, &rects), Some(1));
+    }
+
+    #[test]
+    fn prefers_topmost_or_leftmost_when_multiple_tight_candidates_exist() {
+        let horizontal = vec![
+            (0, Rect::new(0, 10, 20, 20)),
+            (1, Rect::new(20, 10, 20, 10)),
+            (2, Rect::new(20, 20, 20, 10)),
+        ];
+        assert_eq!(next_focus_index(0, 0, 1, &horizontal), Some(1));
+
+        let vertical = vec![
+            (0, Rect::new(10, 0, 20, 20)),
+            (1, Rect::new(10, 20, 10, 20)),
+            (2, Rect::new(20, 20, 10, 20)),
+        ];
+        assert_eq!(next_focus_index(0, 1, 0, &vertical), Some(1));
     }
 }
 

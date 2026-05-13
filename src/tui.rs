@@ -36,6 +36,13 @@ use modals::{
 };
 use status::draw_status_bar;
 
+fn dashboard_area(frame_area: Rect) -> Rect {
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(frame_area)[0]
+}
+
 pub fn run_tui(mut app: App) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -53,38 +60,45 @@ pub fn run_tui(mut app: App) -> Result<()> {
 
         if event::poll(Duration::from_millis(120))? {
             match event::read()? {
-                Event::Key(key) => match app.handle_key(key) {
-                    KeyAction::None => {}
-                    KeyAction::Quit => {
-                        app.should_quit = true;
-                    }
-                    KeyAction::SaveResumeAndQuit => {
-                        let path = resume_path()?;
-                        app.save_resume_view(path)?;
-                        app.should_quit = true;
-                    }
-                    KeyAction::SavePreset(name) => {
-                        if name.is_empty() {
-                            app.mode = Mode::Normal;
-                        } else {
-                            let path = resolve_preset_path(&name)?;
-                            app.save_named_preset(path, name.clone())?;
-                            app.mode = Mode::Normal;
-                            app.toast = Some(crate::app::Toast {
-                                message: format!("saved preset `{name}`"),
-                                level: ToastLevel::Success,
-                                created: std::time::Instant::now(),
-                            });
+                Event::Key(key) => {
+                    let size = terminal.size()?;
+                    let frame_area = Rect::new(0, 0, size.width, size.height);
+                    let pane_area = dashboard_area(frame_area);
+                    let rects = pane_rects(pane_area, &app.layout_tree);
+                    match app.handle_key(key, pane_area, &rects) {
+                        KeyAction::None => {}
+                        KeyAction::Quit => {
+                            app.should_quit = true;
+                        }
+                        KeyAction::SaveResumeAndQuit => {
+                            let path = resume_path()?;
+                            app.save_resume_view(path)?;
+                            app.should_quit = true;
+                        }
+                        KeyAction::SavePreset(name) => {
+                            if name.is_empty() {
+                                app.mode = Mode::Normal;
+                            } else {
+                                let path = resolve_preset_path(&name)?;
+                                app.save_named_preset(path, name.clone())?;
+                                app.mode = Mode::Normal;
+                                app.toast = Some(crate::app::Toast {
+                                    message: format!("saved preset `{name}`"),
+                                    level: ToastLevel::Success,
+                                    created: std::time::Instant::now(),
+                                });
+                            }
+                        }
+                        KeyAction::ApplyVars => {
+                            app.apply_vars()?;
                         }
                     }
-                    KeyAction::ApplyVars => {
-                        app.apply_vars()?;
-                    }
-                },
+                }
                 Event::Mouse(mouse) => {
                     let size = terminal.size()?;
                     let frame_area = Rect::new(0, 0, size.width, size.height);
-                    let rects = pane_rects(frame_area, app.panes.len());
+                    let pane_area = dashboard_area(frame_area);
+                    let rects = pane_rects(pane_area, &app.layout_tree);
                     app.handle_mouse(mouse, frame_area, &rects);
                 }
                 Event::Resize(_, _) => {}

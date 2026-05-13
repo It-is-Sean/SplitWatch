@@ -1,44 +1,11 @@
-use crate::{app::TextInput, layout::grid_for_count};
-use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
+use crate::{app::TextInput, layout::LayoutNode};
+use ratatui::layout::{Margin, Rect};
 
 pub(crate) const MIN_TERMINAL_WIDTH: u16 = 24;
 pub(crate) const MIN_TERMINAL_HEIGHT: u16 = 6;
 
-pub(crate) fn pane_rects(area: Rect, count: usize) -> Vec<(usize, Rect)> {
-    if count == 3 {
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
-        let right_rows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(cols[1]);
-        return vec![(0, cols[0]), (1, right_rows[0]), (2, right_rows[1])];
-    }
-
-    let grid = grid_for_count(count.max(1));
-    let row_constraints = vec![Constraint::Ratio(1, grid.rows as u32); grid.rows];
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(row_constraints)
-        .split(area);
-    let mut rects = Vec::with_capacity(count);
-    for row_idx in 0..grid.rows {
-        let col_constraints = vec![Constraint::Ratio(1, grid.cols as u32); grid.cols];
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(col_constraints)
-            .split(rows[row_idx]);
-        for col_idx in 0..grid.cols {
-            let idx = row_idx * grid.cols + col_idx;
-            if idx >= count {
-                break;
-            }
-            rects.push((idx, cols[col_idx]));
-        }
-    }
-    rects
+pub(crate) fn pane_rects(area: Rect, layout: &LayoutNode) -> Vec<(usize, Rect)> {
+    crate::layout::pane_rects(area, layout)
 }
 
 pub(crate) fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {

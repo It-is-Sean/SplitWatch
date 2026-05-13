@@ -213,13 +213,13 @@ pub(crate) fn draw_delete_confirm_modal(frame: &mut Frame, app: &App) {
         ])
         .split(inner.inner(Margin::new(1, 1)));
     frame.render_widget(
-        Paragraph::new("This will clear the pane command and output.")
+        Paragraph::new("This will remove the pane from the dashboard.")
             .style(Style::default().fg(app.theme.muted))
             .alignment(Alignment::Center),
         chunks[0],
     );
     frame.render_widget(
-        Paragraph::new("Delete command from this pane?")
+        Paragraph::new("Delete this pane?")
             .style(Style::default().fg(app.theme.foreground))
             .alignment(Alignment::Center),
         chunks[1],
@@ -304,7 +304,9 @@ pub(crate) fn draw_help(frame: &mut Frame, app: &App) {
     );
     let text = vec![
         Line::from("Movement: h j k l / arrow keys"),
-        Line::from("Pane: i edit command, t rename, r rerun, space pause, + / - interval"),
+        Line::from("Pane: Enter inline edit, i modal edit, v vertical split, b horizontal split"),
+        Line::from("Pane: H/L width, K/J height, x delete, t rename, r rerun"),
+        Line::from("Pane: space pause, + / - interval"),
         Line::from("Global: R rerun all, p pause all, s save preset, z save view and exit"),
         Line::from("Presets: swatch name, swatch -f file.toml, swatch resume"),
         Line::from("App: ? toggle help, q or Ctrl-C quit"),

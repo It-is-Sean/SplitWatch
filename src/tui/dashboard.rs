@@ -12,7 +12,7 @@ use super::{
 };
 
 pub(crate) fn draw_panes(frame: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
-    let pane_regions = pane_rects(area, app.panes.len());
+    let pane_regions = pane_rects(area, &app.layout_tree);
     let mut inline_cursor = None;
     for (idx, rect) in &pane_regions {
         let pane = &app.panes[*idx];

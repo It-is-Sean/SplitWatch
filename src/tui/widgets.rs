@@ -326,6 +326,9 @@ fn mode_hints(app: &App) -> &'static [(&'static str, &'static str)] {
                 &[
                     ("Enter", "inline"),
                     ("i", "multiline"),
+                    ("v/b", "split"),
+                    ("H/J/K/L", "resize"),
+                    ("x", "delete"),
                     ("t", "title"),
                     ("s", "save"),
                     ("?", "help"),
@@ -334,7 +337,11 @@ fn mode_hints(app: &App) -> &'static [(&'static str, &'static str)] {
             } else {
                 &[
                     ("h/j/k/l", "move"),
+                    ("Enter", "inline"),
                     ("i", "command"),
+                    ("v/b", "split"),
+                    ("H/J/K/L", "resize"),
+                    ("x", "delete"),
                     ("t", "title"),
                     ("r", "rerun"),
                     ("space", "pause"),
@@ -351,7 +358,7 @@ fn mode_hints(app: &App) -> &'static [(&'static str, &'static str)] {
             ("Esc", "blur/close"),
             ("i", "focus"),
         ],
-        Mode::DeleteConfirm => &[("Enter/Y", "confirm"), ("Esc/N", "cancel")],
+        Mode::DeleteConfirm => &[("Enter/Y", "delete"), ("Esc/N", "cancel")],
         Mode::TitleModal => &[("type", "title"), ("Enter", "save"), ("Esc", "cancel")],
         Mode::SaveModal => &[("type", "preset"), ("Enter", "save"), ("Esc", "cancel")],
         Mode::VarsModal => &[("Tab", "next"), ("Enter", "next/start"), ("Esc", "cancel")],

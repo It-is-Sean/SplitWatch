@@ -1,4 +1,5 @@
 use crate::{
+    layout::{LayoutNode, PresetLayout, default_layout_tree, validate_layout_tree},
     preset::{PanePreset, Preset, save_to_path},
     theme::Theme,
 };
@@ -272,6 +273,7 @@ pub enum CommandResult {
 
 pub struct App {
     pub panes: Vec<PaneState>,
+    pub layout_tree: LayoutNode,
     pub focused: usize,
     pub mode: Mode,
     pub command_input: TextInput,
@@ -321,7 +323,14 @@ impl App {
             .enumerate()
             .map(|(idx, pane)| PaneState::from_preset(idx, pane, default_interval_ms))
             .collect::<Vec<_>>();
+        let layout_tree = preset
+            .layout
+            .clone()
+            .and_then(|layout| layout.into_tree(panes.len()))
+            .filter(|tree| validate_layout_tree(tree, panes.len()))
+            .unwrap_or_else(|| default_layout_tree(panes.len()));
         Self {
+            layout_tree,
             focused: preset
                 .focused
                 .unwrap_or(0)
@@ -371,7 +380,7 @@ impl App {
     pub fn to_preset(&self, name: Option<String>) -> Preset {
         Preset {
             name,
-            layout: Some(current_layout_name(self.panes.len()).into()),
+            layout: Some(PresetLayout::from_tree(self.layout_tree.clone())),
             default_interval_ms: Some(self.default_interval_ms),
             theme: Some(self.theme.file.name.clone()),
             accent: self
@@ -391,13 +400,5 @@ impl App {
                 })
                 .collect(),
         }
-    }
-}
-
-fn current_layout_name(count: usize) -> &'static str {
-    if count == 3 {
-        "main-right-stack"
-    } else {
-        "grid"
     }
 }

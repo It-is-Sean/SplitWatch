@@ -156,6 +156,8 @@ swatch -n 4 --theme-file ./examples/custom-theme.toml
 ## Keys
 
 - `h` `j` `k` `l` or arrow keys: move focus
+- `H` `L`: shrink or grow the focused pane width
+- `K` `J`: shrink or grow the focused pane height
 - `i`: set or edit pane command
 - `t`: rename pane
 - `r`: rerun focused pane
@@ -163,6 +165,8 @@ swatch -n 4 --theme-file ./examples/custom-theme.toml
 - `space`: pause or resume focused pane
 - `p`: pause or resume all panes
 - `+` / `-`: adjust focused pane interval
+- `v` / `b`: split focused pane vertically or horizontally
+- `x`: delete focused pane
 - `s`: save current dashboard as a preset
 - `?`: toggle help
 - `z`: save current view and exit
